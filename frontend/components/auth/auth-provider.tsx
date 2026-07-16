@@ -10,22 +10,17 @@ type AuthContextType = {
   session: Session | null;
   fullName: string | null;
   isLoading: boolean;
-  isDemo: boolean;
   signInWithPassword: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName?: string) => Promise<void>;
-  signInAsDemo: () => Promise<void>;
   signOut: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const DEMO_FLAG = "bodify-demo-mode";
-
 interface BackendUser {
   id: string;
   email: string | null;
   full_name: string | null;
-  is_demo: boolean;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -33,7 +28,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [fullName, setFullName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isDemo, setIsDemo] = useState(false);
 
   const loadFullName = async (session: Session | null) => {
     if (session?.user) {
@@ -50,9 +44,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    const demoMode = typeof window !== "undefined" && localStorage.getItem(DEMO_FLAG) === "true";
-    setIsDemo(demoMode);
-
     const getSession = async () => {
       try {
         const supabase = createClient();
@@ -64,8 +55,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (session?.user) {
           await loadFullName(session);
-        } else if (demoMode) {
-          setFullName("Demo User");
         }
       } catch (e) {
         setSession(null);
@@ -98,8 +87,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const supabase = createClient();
     const { error, data } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
-    localStorage.removeItem(DEMO_FLAG);
-    setIsDemo(false);
 
     if (data.session?.user) {
       await loadFullName(data.session);
@@ -119,31 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
     });
     if (error) throw error;
-    localStorage.removeItem(DEMO_FLAG);
-    setIsDemo(false);
     setFullName(fullName || null);
-  };
-
-  const signInAsDemo = async () => {
-    try {
-      const supabase = createClient();
-      const { error, data } = await supabase.auth.signInWithPassword({
-        email: "demo@bodify.app",
-        password: "demobodify123",
-      });
-      if (!error) {
-        localStorage.removeItem(DEMO_FLAG);
-        setIsDemo(false);
-        await loadFullName(data.session);
-        return;
-      }
-    } catch (e) {
-      // Fallback to local demo flag
-    }
-
-    localStorage.setItem(DEMO_FLAG, "true");
-    setIsDemo(true);
-    setFullName("Demo User");
   };
 
   const signOut = async () => {
@@ -153,8 +116,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       // Ignore
     }
-    localStorage.removeItem(DEMO_FLAG);
-    setIsDemo(false);
     setUser(null);
     setSession(null);
     setFullName(null);
@@ -167,10 +128,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         session,
         fullName,
         isLoading,
-        isDemo,
         signInWithPassword,
         signUp,
-        signInAsDemo,
         signOut,
       }}
     >

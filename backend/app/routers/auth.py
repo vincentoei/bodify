@@ -19,7 +19,6 @@ def get_me(
             id=user.id,
             email=user.email,
             full_name=user.full_name,
-            is_demo=user.is_demo,
         )
         db.add(db_user)
         db.commit()
@@ -33,5 +32,4 @@ def get_me(
         "id": user.id,
         "email": user.email,
         "full_name": db_user.full_name,
-        "is_demo": user.is_demo,
     }

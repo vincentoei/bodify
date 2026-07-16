@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/components/auth/auth-provider";
 import { RotatingText } from "./rotating-text";
 import { AgentShowcase } from "./agent-showcase";
 import { DotBackground } from "./dot-background";
@@ -22,13 +21,7 @@ const CTA_CONFIG: Record<CtaState, { label: string; href: string; disabled?: boo
 };
 
 export function Hero({ ctaState }: HeroProps) {
-  const { signInAsDemo } = useAuth();
   const router = useRouter();
-
-  const handleDemo = async () => {
-    await signInAsDemo();
-    router.push("/dashboard");
-  };
 
   const cta = CTA_CONFIG[ctaState];
   const isLoading = ctaState === "loading";
@@ -51,13 +44,6 @@ export function Hero({ ctaState }: HeroProps) {
         </p>
 
         <div className="mx-auto mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <Button
-            size="lg"
-            onClick={handleDemo}
-            className="bg-lightGreen text-brandDark hover:bg-lightGreen/90"
-          >
-            Try Demo Account
-          </Button>
           <Button
             size="lg"
             variant="outline"

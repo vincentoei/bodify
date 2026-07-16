@@ -153,7 +153,7 @@ function AgentMessageBubble({ rationale }: { rationale: string }) {
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { user, isLoading, isDemo } = useAuth();
+  const { user, isLoading } = useAuth();
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const [activeStep, setActiveStep] = useState(1);
@@ -204,13 +204,13 @@ export default function OnboardingPage() {
   });
 
   useEffect(() => {
-    if (!isLoading && !user && !isDemo) {
+    if (!isLoading && !user) {
       router.push("/signin");
       setCheckingPlan(false);
       return;
     }
 
-    if (!isLoading && (user || isDemo)) {
+    if (!isLoading && user) {
       apiGet<{ plan: unknown }>("/plan/current")
         .then((data) => {
           if (data.plan) {
@@ -227,7 +227,7 @@ export default function OnboardingPage() {
           setCheckingPlan(false);
         });
     }
-  }, [user, isLoading, isDemo, router]);
+  }, [user, isLoading, router]);
 
   // Reset pregnancy if sex is changed away from female
   useEffect(() => {
@@ -449,7 +449,7 @@ export default function OnboardingPage() {
     }
   };
 
-  if (isLoading || checkingPlan || (!user && !isDemo)) {
+  if (isLoading || checkingPlan || !user) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-zinc-50">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />

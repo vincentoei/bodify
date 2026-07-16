@@ -15,7 +15,6 @@ class CurrentUser(BaseModel):
     id: str
     email: str | None = None
     full_name: str | None = None
-    is_demo: bool = False
 
 
 class SupabaseJWTVerifier:
@@ -95,13 +94,6 @@ def _get_verifier() -> SupabaseJWTVerifier:
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> CurrentUser:
-    settings = get_settings()
-
-    # Allow demo/local development with a simple demo bearer or no token
-    if settings.app_env == "development":
-        if credentials is None or credentials.credentials == "demo":
-            return CurrentUser(id="demo-user", email="demo@bodify.app", full_name="Demo User", is_demo=True)
-
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -123,7 +115,7 @@ def get_current_user(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token: no subject",
             )
-        return CurrentUser(id=user_id, email=email, full_name=full_name, is_demo=False)
+        return CurrentUser(id=user_id, email=email, full_name=full_name)
     except JWTError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

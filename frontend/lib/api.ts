@@ -19,9 +19,6 @@ export async function apiFetch(
   }
   if (session?.access_token) {
     headers.set("Authorization", `Bearer ${session.access_token}`);
-  } else {
-    // Development/demo fallback
-    headers.set("Authorization", "Bearer demo");
   }
 
   return fetch(`${API_URL}${path}`, {
