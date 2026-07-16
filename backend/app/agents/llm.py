@@ -24,6 +24,6 @@ def get_llm(temperature: float = 0.2) -> BaseChatModel:
         openai_api_key=settings.openrouter_api_key,
         openai_api_base=settings.openrouter_base_url,
         temperature=temperature,
-        max_tokens=8192,
+        max_tokens=16384,
         extra_body={"route": "fallback"},
     )
