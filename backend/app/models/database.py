@@ -6,7 +6,14 @@ from app.core.config import get_settings
 settings = get_settings()
 Base = declarative_base()
 
-engine = create_engine(settings.database_url)
+
+def _create_engine(database_url: str):
+    if database_url.startswith("postgresql"):
+        return create_engine(database_url, connect_args={"sslmode": "require"})
+    return create_engine(database_url)
+
+
+engine = _create_engine(settings.database_url)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
