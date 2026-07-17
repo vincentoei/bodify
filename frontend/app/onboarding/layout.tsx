@@ -36,11 +36,17 @@ export default async function OnboardingLayout({
     }
   );
 
+  // Use getSession() instead of getUser() in Server Components.
+  // getUser() validates the JWT and may try to refresh the session,
+  // but Server Components cannot set cookies during render, which can
+  // cause a stale-but-refreshable session to be rejected here. The
+  // client-side AuthProvider on the onboarding page handles refresh
+  // and its own redirect, so this guard only catches absent sessions.
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  if (!user) {
+  if (!session?.user) {
     redirect("/signin");
   }
 
