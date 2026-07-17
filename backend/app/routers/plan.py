@@ -11,7 +11,7 @@ import asyncio
 import json
 
 from app.core.auth import get_current_user, CurrentUser
-from app.models.database import get_db, Profile, Plan, User, CalendarEvent, Log
+from app.models.database import get_db, Profile, Plan, User, CalendarEvent, Log, AgentMemory
 from app.models.schemas import (
     CoordinatorDecision,
     CalendarEventItem,
@@ -23,10 +23,12 @@ from app.models.schemas import (
     WorkoutPlan,
     MealOption,
     WorkoutOption,
+    ExtractedFact,
 )
 from app.agents.graph.nodes import orchestrator_node, AGENT_REGISTRY
 from app.agents.coordinator import coordinator_node
 from app.agents.graph.state import AgentState
+from app.services.calendar import apply_calendar_mutations, generate_fallback_mutations_for_facts
 
 router = APIRouter()
 
@@ -152,6 +154,29 @@ def _format_recent_logs(logs: list[Log]) -> str:
         summary = parsed.get("summary", "") if isinstance(parsed, dict) else ""
         lines.append(f"- {log.created_at.date()}: {text or summary}")
 
+    return "\n".join(lines)
+
+
+def _format_recent_adaptations(adaptations: list | None) -> str:
+    """Format recent plan adaptation ledger entries for the coordinator prompt."""
+    if not adaptations:
+        return "No recent adaptations."
+    lines = []
+    for a in adaptations[-10:]:
+        if not isinstance(a, dict):
+            continue
+        at = a.get("at", "")
+        msg = a.get("message", "")
+        changes = a.get("changes", []) or []
+        change_descs = []
+        for c in changes[:5]:
+            if not isinstance(c, dict) or c.get("error"):
+                continue
+            change_descs.append(
+                f"{c.get('action','?')} {c.get('type','?')} on {str(c.get('date',''))[:10]}"
+            )
+        suffix = "; ".join(change_descs) if change_descs else "no concrete changes"
+        lines.append(f"- {at[:10]}: {msg[:140]} -> {suffix}")
     return "\n".join(lines)
 
 
@@ -406,13 +431,30 @@ def _save_plan_and_events(
     current_week: int = 1,
     window_days: int = 7,
     deactivate_old: bool = True,
+    preserved_adaptations: list | None = None,
 ):
-    """Persist a plan and generate its rolling calendar window."""
+    """Persist a plan and generate its rolling calendar window.
+
+    preserved_adaptations: prior plan's adaptation ledger carried forward so the
+    audit trail survives regeneration. A synthetic "regenerated" entry is
+    appended to mark the boundary.
+    """
     if deactivate_old:
         db.query(Plan).filter(Plan.user_id == user_id).update({"is_active": False})
 
     plan = _build_plan_entity(user_id, decision, utc_start, timezone_name)
     plan.current_week = current_week
+
+    # Carry forward prior adaptation ledger and stamp a regeneration entry.
+    prior = list(preserved_adaptations or [])
+    prior.append({
+        "at": datetime.now(timezone.utc).isoformat(),
+        "message": f"Plan generated for week {current_week}",
+        "changes": [],
+        "facts": [],
+    })
+    plan.plan_adaptations = prior[-50:]
+
     db.add(plan)
 
     # Generate events starting from the user's local midnight today.
@@ -512,11 +554,20 @@ def generate_plan(
     )
     recent_logs_text = _format_recent_logs(recent_logs)
 
+    # Surface prior plan adaptations so the coordinator doesn't reintroduce
+    # events the user explicitly adapted away from (e.g. skipped workouts).
+    prior_plan = db.query(Plan).filter(Plan.user_id == user.id, Plan.is_active == True).first()
+    recent_adaptations_text = _format_recent_adaptations(prior_plan.plan_adaptations if prior_plan else None)
+    preserved_adaptations = list((prior_plan.plan_adaptations or []) if prior_plan else [])
+
     initial_state: AgentState = {
         "event_type": "onboarding",
         "profile": user_profile,
         "recent_logs": [],
-        "context": {"recent_logs": recent_logs_text},
+        "context": {
+            "recent_logs": recent_logs_text,
+            "recent_adaptations": recent_adaptations_text,
+        },
         "selected_agents": [],
         "agent_outputs": {},
         "conflicts": [],
@@ -524,6 +575,11 @@ def generate_plan(
         "user_feedback": None,
         "approved": None,
         "iteration": 0,
+        "recovery_message": None,
+        "memories": [],
+        "extracted_facts": [],
+        "calendar_mutations": [],
+        "recovery_decision": None,
     }
 
     try:
@@ -553,7 +609,10 @@ def generate_plan(
 
     timezone_name = _validate_timezone(timezone_str)
     utc_start = datetime.now(timezone.utc)
-    _save_plan_and_events(db, user.id, decision, utc_start, timezone_name=timezone_name)
+    _save_plan_and_events(
+        db, user.id, decision, utc_start, timezone_name=timezone_name,
+        preserved_adaptations=preserved_adaptations,
+    )
 
     return {"plan": decision}
 
@@ -592,11 +651,18 @@ async def generate_plan_stream(
     )
     recent_logs_text = _format_recent_logs(recent_logs)
 
+    prior_plan = db.query(Plan).filter(Plan.user_id == user.id, Plan.is_active == True).first()
+    recent_adaptations_text = _format_recent_adaptations(prior_plan.plan_adaptations if prior_plan else None)
+    preserved_adaptations = list((prior_plan.plan_adaptations or []) if prior_plan else [])
+
     initial_state: AgentState = {
         "event_type": "onboarding",
         "profile": user_profile,
         "recent_logs": [],
-        "context": {"recent_logs": recent_logs_text},
+        "context": {
+            "recent_logs": recent_logs_text,
+            "recent_adaptations": recent_adaptations_text,
+        },
         "selected_agents": [],
         "agent_outputs": {},
         "conflicts": [],
@@ -604,6 +670,11 @@ async def generate_plan_stream(
         "user_feedback": None,
         "approved": None,
         "iteration": 0,
+        "recovery_message": None,
+        "memories": [],
+        "extracted_facts": [],
+        "calendar_mutations": [],
+        "recovery_decision": None,
     }
 
     timezone_name = _validate_timezone(timezone_str)
@@ -652,7 +723,10 @@ async def generate_plan_stream(
 
             def _save_to_db():
                 utc_start = datetime.now(timezone.utc)
-                _save_plan_and_events(db, user.id, decision, utc_start, timezone_name=timezone_name)
+                _save_plan_and_events(
+                    db, user.id, decision, utc_start, timezone_name=timezone_name,
+                    preserved_adaptations=preserved_adaptations,
+                )
                 return True
 
             await loop.run_in_executor(None, _save_to_db)
@@ -683,9 +757,11 @@ def get_current_plan(
     # Re-serialize stored reasoning so datetime fields become JSON-safe strings.
     try:
         decision = CoordinatorDecision.model_validate(plan.reasoning)
-        return {"plan": decision.model_dump(mode="json")}
+        plan_dict = decision.model_dump(mode="json")
     except Exception:
-        return {"plan": plan.reasoning}
+        plan_dict = plan.reasoning
+    plan_dict["adaptations"] = plan.plan_adaptations or []
+    return {"plan": plan_dict}
 
 
 @router.get("/status")
@@ -718,6 +794,7 @@ def get_plan_status(
             "phases": plan.reasoning.get("final_recommendation", {}).get("phases", []),
             "timezone": plan.timezone,
             "last_generated_at": plan.last_generated_at.isoformat() if plan.last_generated_at else None,
+            "adaptations": plan.plan_adaptations or [],
         },
         "needs_regeneration": needs_regeneration,
     }
@@ -780,6 +857,51 @@ def regenerate_week(
             event_metadata=item.event_metadata,
         )
         db.add(event)
+
+    # Make generated events visible to the fallback query below.
+    db.flush()
+
+    # Re-apply durable memory-driven adaptations so weekly regeneration does not
+    # silently undo injury, travel, or recurring-event adjustments.
+    active_memories = (
+        db.query(AgentMemory)
+        .filter(
+            AgentMemory.user_id == user.id,
+            AgentMemory.active == True,
+        )
+        .filter(
+            (AgentMemory.expires_at == None) | (AgentMemory.expires_at > now)
+        )
+        .all()
+    )
+    if active_memories:
+        facts = []
+        for m in active_memories:
+            ttl_days = None
+            if m.expires_at:
+                expires_at = m.expires_at
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                ttl_days = (expires_at - now).days
+                if ttl_days < 0:
+                    continue
+            facts.append(ExtractedFact(
+                category=m.category,
+                content=m.content,
+                ttl_days=ttl_days,
+                source_agent=m.source_agent,
+            ))
+        new_events = (
+            db.query(CalendarEvent)
+            .filter(
+                CalendarEvent.user_id == user.id,
+                CalendarEvent.date >= utc_window_start,
+            )
+            .all()
+        )
+        fallback = generate_fallback_mutations_for_facts(facts, new_events, plan)
+        if fallback:
+            apply_calendar_mutations(db, user.id, fallback, plan)
 
     plan.current_week = current_week
     plan.current_phase = current_phase

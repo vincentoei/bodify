@@ -514,7 +514,7 @@ export default function OnboardingPage() {
               </motion.div>
             ))}
 
-            {/* Bodi coordinator consensus */}
+            {/* Bodi consensus */}
             {coordinatorDone && (
               <motion.div
                 className="flex items-start gap-3"
@@ -526,7 +526,7 @@ export default function OnboardingPage() {
                   <Brain className="h-4 w-4 text-green-600" />
                 </div>
                 <div className="flex-1 rounded-2xl rounded-tl-md border border-green-200 bg-green-50 px-4 py-3 text-green-800">
-                  <p className="text-xs font-semibold opacity-80 mb-1">Bodi (Coordinator)</p>
+                  <p className="text-xs font-semibold opacity-80 mb-1">Bodi</p>
                   <p className="text-sm">
                     I&apos;ve finished making your plan decision based on the 5 specialists&apos; opinions. Taking you to your dashboard now...
                   </p>

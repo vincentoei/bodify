@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     deepgram_api_key: str = ""
     chroma_host: str = "localhost"
-    chroma_port: int = 8000
+    chroma_port: int = 8001
     chroma_collection: str = "bodify_guidelines"
     app_env: str = "development"
     frontend_url: str = "http://localhost:3000"

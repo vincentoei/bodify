@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
-from app.routers import auth, onboarding, plan, calendar, log, simulate, stt
+from app.routers import auth, onboarding, plan, calendar, log, simulate, stt, recovery
 
 settings = get_settings()
 
@@ -32,6 +32,7 @@ app.include_router(calendar.router, prefix="/calendar", tags=["calendar"])
 app.include_router(log.router, prefix="/log", tags=["log"])
 app.include_router(simulate.router, prefix="/simulate", tags=["simulate"])
 app.include_router(stt.router, prefix="/stt", tags=["stt"])
+app.include_router(recovery.router, prefix="/recovery", tags=["recovery"])
 
 
 @app.get("/health")

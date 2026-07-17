@@ -147,6 +147,12 @@ class ParsedLogEntry(BaseModel):
     type: Literal["meal", "workout", "hydration", "sleep", "other"]
     description: str
     estimated_calories: int | None = None
+    grams_protein: int | None = None
+    grams_carbs: int | None = None
+    grams_fat: int | None = None
+    grams_fiber: int | None = None
+    liters_water: float | None = None
+    hours_sleep: float | None = None
     time_of_day: Literal["morning", "afternoon", "evening", "night"] | None = None
     matches_planned_event: bool = True
 
@@ -155,6 +161,12 @@ class DailyLogParseResult(BaseModel):
     entries: list[ParsedLogEntry]
     total_calories_consumed: int | None = None
     total_calories_burned: int | None = None
+    total_grams_protein: int | None = None
+    total_grams_carbs: int | None = None
+    total_grams_fat: int | None = None
+    total_grams_fiber: int | None = None
+    total_liters_water: float | None = None
+    total_hours_sleep: float | None = None
     missed_event_types: list[str] = []
     summary: str = ""
 
@@ -177,12 +189,102 @@ class SimulationScenario(BaseModel):
     title: str
     description: str
     icon: str
-    inputs: dict[str, Any]
+    palette: str = ""
 
 
-class SimulationResult(BaseModel):
-    scenario: SimulationScenario
-    original_plan: PlanRecommendation
-    simulated_plan: PlanRecommendation
-    debate: CoordinatorDecision
+class PlanDelta(BaseModel):
+    """Numeric shift between current plan and simulated scenario. Null fields
+    mean the scenario does not affect that metric. ponytail: add macro fields
+    if a scenario ever needs them."""
+    calorie_target: int | None = None
+    weekly_workouts: int | None = None
+    workout_duration_min: int | None = None
+    daily_steps_goal: int | None = None
+    sleep_hours_target: float | None = None
+    hydration_liters: float | None = None
+
+
+class SimulationSummary(BaseModel):
+    """Lightweight result shape for streaming custom what-if sims. No full
+    meal_plan/workout_plan emission — keeps token cost low and UX snappy."""
     impact_summary: str
+    likely_outcome: str
+    risks: list[str] = []
+    recommendation_delta: PlanDelta = PlanDelta()
+    specialist_outputs: list[SpecialistOutput] = []
+    conflicts: list[Conflict] = []
+    resolution_summary: str
+
+
+class SimulationStreamRequest(BaseModel):
+    prompt: str
+
+
+# ---------- Recovery & durable memory ----------
+class ExtractedFact(BaseModel):
+    """A durable fact the orchestrator wants persisted to agent_memory.
+
+    ttl_days is optional: set for time-bounded facts (e.g. travel). None means
+    the fact persists until explicitly retired.
+    """
+    category: Literal[
+        "travel", "social_event", "schedule", "diet", "injury",
+        "motivation", "lifestyle", "other"
+    ]
+    content: str
+    ttl_days: int | None = None
+    source_agent: str | None = None
+
+
+class ExtractedFacts(BaseModel):
+    """Container for structured LLM output of the fact extractor.
+
+    LangChain's with_structured_output only accepts a Pydantic class, not a
+    typing.List[...] generic, so we wrap the list here.
+    """
+    facts: list[ExtractedFact] = []
+
+
+class AgentMemoryEntry(BaseModel):
+    id: str
+    content: str
+    category: str
+    source_agent: str | None = None
+    active: bool
+    created_at: datetime
+    expires_at: datetime | None = None
+
+
+class CalendarMutation(BaseModel):
+    action: Literal["replace", "reschedule", "skip", "add"]
+    date: str  # ISO yyyy-mm-dd absolute date (never relative words)
+    event_type: Literal["meal", "workout", "hydration", "sleep", "recovery", "checkin"] | None = None
+    meal_filter: Literal["breakfast", "lunch", "dinner"] | None = None
+    title_keywords: list[str] | None = None  # match events whose title contains any keyword
+    new_title: str | None = None
+    new_description: str | None = None
+    new_date: str | None = None  # ISO yyyy-mm-dd for reschedule
+    reason: str = ""
+
+
+class RecoveryDecision(BaseModel):
+    resolution_summary: str
+    specialist_outputs: list[SpecialistOutput] = []
+    conflicts: list[Conflict] = []
+    calendar_mutations: list[CalendarMutation] = []
+    extracted_facts: list[ExtractedFact] = []
+
+
+class RecoverySubmission(BaseModel):
+    text: str
+
+
+class PlanAdaptationEntry(BaseModel):
+    """Audit ledger entry appended to Plan.plan_adaptations on every recovery
+    mutation, so the main Coordinator can see what was adapted and when — and
+    the user has a visible history.
+    """
+    at: datetime
+    message: str
+    changes: list[dict[str, Any]] = []
+    facts: list[dict[str, Any]] = []

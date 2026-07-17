@@ -42,6 +42,12 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+export async function apiDelete<T>(path: string): Promise<T> {
+  const res = await apiFetch(path, { method: "DELETE" });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 /**
  * Stream SSE events from a POST endpoint.
  * Parses the response body as text/event-stream and calls onEvent for each event.

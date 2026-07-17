@@ -31,6 +31,7 @@ class User(Base):
     plans = relationship("Plan", back_populates="user")
     events = relationship("CalendarEvent", back_populates="user")
     logs = relationship("Log", back_populates="user")
+    agent_memories = relationship("AgentMemory", back_populates="user")
 
 
 class Profile(Base):
@@ -67,6 +68,7 @@ class Plan(Base):
     timezone = Column(String, default="UTC")
     generation_window_days = Column(Integer, default=7)
     last_generated_at = Column(DateTime(timezone=True), nullable=True)
+    plan_adaptations = Column(JSON, default=list)  # audit ledger of recovery mutations
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="plans")
@@ -115,3 +117,26 @@ class Log(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="logs")
+
+
+class AgentMemory(Base):
+    """Durable facts about the user that specialists should remember across sessions.
+
+    Short-term episodic info (today's log, one-off bites) stays in the Log table.
+    This table holds durable context: travel dates, recurring social events,
+    dietary restrictions, injuries — anything the orchestrator classifies as
+    needing to persist beyond a single day. Optional expires_at auto-retires
+    time-bounded facts (e.g. a 3-day trip).
+    """
+    __tablename__ = "agent_memories"
+
+    id = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("users.id"))
+    content = Column(Text, nullable=False)
+    category = Column(String, nullable=False)
+    source_agent = Column(String, nullable=True)
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User", back_populates="agent_memories")

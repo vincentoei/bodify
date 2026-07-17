@@ -17,11 +17,27 @@ AGENT_REGISTRY = {
 }
 
 
+def _memories_to_text(memories: list[dict]) -> str:
+    if not memories:
+        return "No durable memories on record."
+    lines = []
+    for m in memories:
+        cat = m.get("category", "")
+        content = m.get("content", "")
+        lines.append(f"- [{cat}] {content}")
+    return "\n".join(lines)
+
+
 def orchestrator_node(state: AgentState) -> dict:
     """Decide which agents should participate based on event type."""
     event_type = state["event_type"]
     context = state.get("context", {})
     profile = state.get("profile")
+    memories = state.get("memories", [])
+
+    # Surface durable memories to specialists via context
+    if memories:
+        context["memories_text"] = _memories_to_text(memories)
 
     # Retrieve relevant guidelines based on profile and event
     query = context.get("scenario", event_type.replace("_", " "))
@@ -42,6 +58,21 @@ def orchestrator_node(state: AgentState) -> dict:
 
     if event_type == "setback_reported":
         return {"selected_agents": ["behavioral", "nutrition", "fitness", "medical"], "context": context}
+
+    if event_type == "recovery_chat":
+        message = (state.get("recovery_message") or "").lower()
+        # Default council for recovery: behavioral + fitness + nutrition + progress
+        agents = ["behavioral", "fitness", "nutrition", "progress"]
+        # Escalate to medical if illness/injury keywords appear
+        if any(
+            kw in message
+            for kw in (
+                "sick", "ill", "flu", "fever", "injury", "injured", "pain",
+                "hurt", "hospital", "medication", "dizzy", "nausea",
+            )
+        ):
+            agents.append("medical")
+        return {"selected_agents": agents, "context": context}
 
     if event_type == "what_if":
         # For simulations, run full council unless narrowed by context

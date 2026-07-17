@@ -29,7 +29,7 @@ Output your recommendation as structured JSON matching the SpecialistOutput sche
             ("system", system_message),
             (
                 "human",
-                "Event type: {event_type}\nUser profile: {profile}\nAdditional context: {context}\n\nProvide your medical safety assessment and guardrails.",
+                "Event type: {event_type}\nUser profile: {profile}\nAdditional context: {context}\n\nDurable memories about the user:\n{memories}\n\nProvide your medical safety assessment and guardrails.",
             ),
         ]
     )
@@ -42,6 +42,7 @@ Output your recommendation as structured JSON matching the SpecialistOutput sche
             "event_type": event_type,
             "profile": profile.model_dump_json() if profile else "{}",
             "context": str(context),
+            "memories": context.get("memories_text", "None"),
         }
     )
 

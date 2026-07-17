@@ -28,7 +28,7 @@ Output your recommendation as structured JSON matching the SpecialistOutput sche
             ("system", system_message),
             (
                 "human",
-                "Event type: {event_type}\nUser profile: {profile}\nAdditional context: {context}\n\nProvide your fitness recommendation.",
+                "Event type: {event_type}\nUser profile: {profile}\nAdditional context: {context}\n\nDurable memories about the user:\n{memories}\n\nProvide your fitness recommendation.",
             ),
         ]
     )
@@ -41,6 +41,7 @@ Output your recommendation as structured JSON matching the SpecialistOutput sche
             "event_type": event_type,
             "profile": profile.model_dump_json() if profile else "{}",
             "context": str(context),
+            "memories": context.get("memories_text", "None"),
         }
     )
 

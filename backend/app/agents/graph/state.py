@@ -1,6 +1,9 @@
 from typing import TypedDict, Annotated, Any
 from operator import add
-from app.models.schemas import UserProfile, SpecialistOutput, Conflict, CoordinatorDecision, LogEntry
+from app.models.schemas import (
+    UserProfile, SpecialistOutput, Conflict, CoordinatorDecision, LogEntry,
+    ExtractedFact, CalendarMutation, RecoveryDecision,
+)
 
 
 class AgentState(TypedDict):
@@ -15,3 +18,9 @@ class AgentState(TypedDict):
     user_feedback: str | None
     approved: bool | None
     iteration: int
+    # Recovery chat slots
+    recovery_message: str | None
+    memories: list[dict[str, Any]]
+    extracted_facts: list[ExtractedFact]
+    calendar_mutations: list[CalendarMutation]
+    recovery_decision: RecoveryDecision | None
